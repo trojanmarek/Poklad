@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="cs"><head><meta charset="utf-8"><title>Hon na poklad</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<style>
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);--bg:#fff8e7;--fg:#2b2b2b;--card:#fff;--ac:#ff8a00;--z0:#bfe3ff;--z1:#fff0a8;--z2:#ffb199}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#1d1b16;--fg:#f3efe4;--card:#2c2a23;--z0:#1f3a52;--z1:#5a5122;--z2:#6b2f20}}
+html,body{height:100%;margin:0}
+[hidden]{display:none!important}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-user-select:none;user-select:none}
+section{min-height:100%;padding:16px;display:flex;flex-direction:column;gap:12px;align-items:center}
+button{font:inherit;border:0;border-radius:20px;background:var(--ac);color:#fff;padding:14px 18px;font-weight:700;font-size:18px}
+button.big{font-size:28px;padding:28px 20px;width:100%}
+button.sec{background:var(--card);color:var(--fg);border:2px solid var(--ac)}
+button:disabled{opacity:.4}
+.em{display:flex;flex-wrap:wrap;gap:8px;justify-content:center}
+.em button{background:var(--card);font-size:30px;padding:8px 12px;border:3px solid transparent}
+.em button.on{border-color:var(--ac)}
+.card{background:var(--card);border-radius:16px;padding:12px;width:100%;max-width:480px;box-sizing:border-box}
+textarea{width:100%;height:70px;font-size:12px;box-sizing:border-box;-webkit-user-select:text;user-select:text}
+#play{transition:background .5s}
+#target{font-size:96px;line-height:1}
+#dots{font-size:26px;letter-spacing:4px}
+#arrowbox{flex:1;display:flex;align-items:center;justify-content:center;width:100%}
+#arrow{width:min(70vw,320px);height:min(70vw,320px);transition:transform .25s linear}
+#face{font-size:90px;line-height:1}
+.fall{position:fixed;top:-60px;font-size:40px;animation:f 3.5s linear forwards;pointer-events:none}
+@keyframes f{to{transform:translateY(115vh) rotate(360deg)}}
+#gear{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 6px);background:none;color:var(--fg);opacity:.35;padding:6px;font-size:22px}
+</style></head><body>
+
+<section id="home">
+ <div style="font-size:72px">🏴‍☠️💎</div>
+ <h1 style="margin:0">Hon na poklad</h1>
+ <button class="big" data-a="goAdult">🧑 Dospělý: vytvořit trasu</button>
+ <button class="big" id="playbtn" data-a="goPlay">👶 Dítě: hrát</button>
+ <div class="card" style="font-size:14px">Hrajte venku (potřeba GPS). Telefon při hře držte vodorovně. Dospělý: 1,5 s podržte ⚙️ nebo cíl pro přeskočení / konec.</div>
+</section>
+
+<section id="adult" hidden>
+ <h2 style="margin:0">Vytvoření trasy</h2>
+ <div class="card" style="font-size:15px">Projděte trasu s tímhle telefonem. U každého místa vyberte obrázek (např. strom) a stiskněte „Přidat zastávku“. Na konci stiskněte „Poklad“ a poklad ukryjte. Pak dejte telefon dítěti.</div>
+ <div id="gpsst" class="card">📡 Hledám GPS…</div>
+ <div class="em" id="emrow"></div>
+ <button data-a="add" id="addb">📍 Přidat zastávku</button>
+ <button data-a="treasure" id="trb">💎 Poklad (konec trasy)</button>
+ <div class="card"><b>Trasa:</b> <span id="list" style="font-size:28px">—</span>
+  <div style="display:flex;gap:8px;margin-top:8px"><button class="sec" data-a="undo">↩️ Smazat poslední</button><button class="sec" data-a="clear">🗑️ Vše</button></div></div>
+ <div class="card" style="font-size:14px">Kód trasy (pro jiný telefon – zkopírujte a vložte tam, pak „Načíst“):
+  <textarea id="code"></textarea>
+  <div style="display:flex;gap:8px;margin-top:6px"><button class="sec" data-a="exp">📤 Vytvořit kód</button><button class="sec" data-a="imp">📥 Načíst</button></div></div>
+ <button data-a="home">⬅️ Zpět</button>
+</section>
+
+<section id="play" hidden>
+ <button id="gear">⚙️</button>
+ <div id="target"></div>
+ <div id="dots"></div>
+ <div id="arrowbox"><svg id="arrow" viewBox="0 0 100 100"><path d="M50 4 L90 90 L50 72 L10 90 Z" fill="#ff8a00" stroke="#7a3d00" stroke-width="4" stroke-linejoin="round"/></svg></div>
+ <div id="face">📡</div>
+</section>
+
+<script>
+const $=s=>document.querySelector(s);
+const EM=['🌳','🪑','🏠','🚗','🌸','🪨','🚪','💡','🐶','⭐'];
+let route=load(),pos=null,sel=EM[0],watchId=null,heading=null,idx=0,zone=-1,done=false,ac=null,timer=null;
+function load(){try{return JSON.parse(localStorage.getItem('trasa'))||[]}catch(e){return[]}}
+function save(){try{localStorage.setItem('trasa',JSON.stringify(route))}catch(e){}}
+function show(id){document.querySelectorAll('section').forEach(s=>s.hidden=s.id!==id)}
+function home(){show('home');$('#playbtn').disabled=!(route.length&&route[route.length-1].e==='💎')}
+function sound(f,d){try{ac=ac||new (window.AudioContext||window.webkitAudioContext)();const o=ac.createOscillator(),g=ac.createGain();o.frequency.value=f;o.connect(g);g.connect(ac.destination);g.gain.setValueAtTime(.2,ac.currentTime);g.gain.exponentialRampToValueAtTime(.001,ac.currentTime+d);o.start();o.stop(ac.currentTime+d)}catch(e){}}
+function say(t){try{speechSynthesis.cancel();const u=new SpeechSynthesisUtterance(t);u.lang='cs-CZ';u.rate=.9;speechSynthesis.speak(u)}catch(e){}}
+function gps(cb){
+ if(watchId!=null)return;
+ if(!navigator.geolocation){$('#gpsst').textContent='❌ GPS není k dispozici';return}
+ watchId=navigator.geolocation.watchPosition(p=>{pos={lat:p.coords.latitude,lon:p.coords.longitude,acc:p.coords.accuracy,h:p.coords.heading};cb&&cb()},
+  e=>{$('#gpsst').textContent='❌ GPS: '+e.message+' (povolte polohu a otevřete stránku v prohlížeči)'},{enableHighAccuracy:true,maximumAge:500,timeout:20000});
+ try{navigator.wakeLock&&navigator.wakeLock.request('screen').catch(()=>{})}catch(e){}
+}
+function startCompass(){
+ const on=e=>{if(e.webkitCompassHeading!=null)heading=e.webkitCompassHeading;else if(e.alpha!=null&&(e.absolute||e.type==='deviceorientationabsolute'))heading=(360-e.alpha)%360};
+ const go=()=>{addEventListener('deviceorientationabsolute',on,true);addEventListener('deviceorientation',on,true)};
+ if(window.DeviceOrientationEvent&&DeviceOrientationEvent.requestPermission)DeviceOrientationEvent.requestPermission().then(r=>r==='granted'&&go()).catch(()=>{});else go();
+}
+/* ---- adult ---- */
+function goAdult(){show('adult');goAdultRow();renderList();gps(()=>{$('#gpsst').textContent='✅ GPS OK (přesnost '+Math.round(pos.acc)+' m)'})}
+function goAdultRow(){$('#emrow').innerHTML=EM.map(e=>`<button class="${e===sel?'on':''}" data-e="${e}">${e}</button>`).join('')}
+function renderList(){$('#list').textContent=route.length?route.map(r=>r.e).join(' ➜ '):'—';const fin=route.length&&route[route.length-1].e==='💎';$('#addb').disabled=fin;$('#trb').disabled=fin}
+function addStop(e,fin){if(!pos){alert('Ještě nemám GPS polohu.');return}if(pos.acc>30&&!confirm('GPS je nepřesná ('+Math.round(pos.acc)+' m). Přesto přidat?'))return;route.push({lat:pos.lat,lon:pos.lon,e});save();renderList();sound(660,.15)}
+function exp(){$('#code').value=btoa(encodeURIComponent(JSON.stringify(route.map(r=>[+r.lat.toFixed(6),+r.lon.toFixed(6),r.e]))));$('#code').select()}
+function imp(){try{const a=JSON.parse(decodeURIComponent(atob($('#code').value.trim())));route=a.map(r=>({lat:r[0],lon:r[1],e:r[2]}));save();renderList()}catch(e){alert('Neplatný kód')}}
+/* ---- play ---- */
+const R=6371000,rad=x=>x*Math.PI/180;
+function dist(a,b){const dl=rad(b.lat-a.lat),dn=rad(b.lon-a.lon);const x=Math.sin(dl/2)**2+Math.cos(rad(a.lat))*Math.cos(rad(b.lat))*Math.sin(dn/2)**2;return 2*R*Math.asin(Math.sqrt(x))}
+function bear(a,b){const y=Math.sin(rad(b.lon-a.lon))*Math.cos(rad(b.lat));const x=Math.cos(rad(a.lat))*Math.sin(rad(b.lat))-Math.sin(rad(a.lat))*Math.cos(rad(b.lat))*Math.cos(rad(b.lon-a.lon));return(Math.atan2(y,x)*180/Math.PI+360)%360}
+function goPlay(){
+ idx=0;zone=-1;done=false;show('play');sound(1,.01);startCompass();gps();
+ $('#face').textContent='📡';$('#arrow').style.display='';
+ say('Jdi tam, kam ukazuje šipka!');
+ clearInterval(timer);timer=setInterval(draw,250);draw();
+}
+function dots(){return route.map((r,i)=>i<idx?'⭐':'⚪').join('')}
+function draw(){
+ if(done||$('#play').hidden)return;
+ const t=route[idx];$('#target').textContent=t.e;$('#dots').textContent=dots();
+ $('#play').style.background='var(--z'+Math.max(zone,0)+')';
+ if(!pos){$('#face').textContent='📡';return}
+ const d=dist(pos,t),h=heading!=null?heading:(pos.h!=null&&!isNaN(pos.h)?pos.h:0);
+ $('#arrow').style.transform='rotate('+(bear(pos,t)-h)+'deg)';
+ const z=d>60?0:d>25?1:2;
+ if(z!==zone){zone=z;say(['Zima','Teplo','Horko!'][z])}
+ $('#face').textContent=['🥶','🙂','🔥'][z];
+ if(d<=Math.max(10,Math.min(pos.acc||0,25)))arrive();
+}
+function arrive(){
+ idx++;zone=-1;
+ if(idx>=route.length){
+  done=true;$('#arrow').style.display='none';$('#face').textContent='🏆';$('#target').textContent='💎';$('#dots').textContent=dots();
+  [523,659,784,1047].forEach((f,i)=>setTimeout(()=>sound(f,.3),i*180));say('Hurá! Našel jsi poklad!');
+  for(let i=0;i<30;i++){const s=document.createElement('span');s.className='fall';s.textContent=['🎉','⭐','💎','🎈'][i%4];s.style.left=Math.random()*95+'vw';s.style.animationDelay=Math.random()*1.5+'s';document.body.appendChild(s);setTimeout(()=>s.remove(),6000)}
+ }else{sound(784,.25);say('Správně! Hledej dál!')}
+}
+function longPress(el,fn){let t;el.addEventListener('pointerdown',()=>{t=setTimeout(fn,1500)});['pointerup','pointerleave','pointercancel'].forEach(ev=>el.addEventListener(ev,()=>clearTimeout(t)))}
+longPress($('#gear'),()=>{clearInterval(timer);home()});
+longPress($('#target'),()=>{if(!done)arrive()});
+const A={goAdult,goPlay,home,exp,imp,add:()=>addStop(sel),treasure:()=>addStop('💎',true),undo:()=>{route.pop();save();renderList()},clear:()=>{if(confirm('Smazat celou trasu?')){route=[];save();renderList()}}};
+document.addEventListener('click',e=>{const b=e.target.closest('[data-a],[data-e]');if(!b)return;if(b.dataset.e){sel=b.dataset.e;goAdultRow()}else if(A[b.dataset.a])A[b.dataset.a]()});
+home();
+</script></body></html>
